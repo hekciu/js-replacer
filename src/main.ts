@@ -1,3 +1,3 @@
-const chuj: string = 'Hello World'
+import engine from "./core/engine";
 
-console.log(chuj)
+console.log(engine.schemeExpressionToAst("lodash.var1(*, *).czekoladka(*, *, *)"))
