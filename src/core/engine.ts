@@ -1,6 +1,7 @@
 import _traverse from '@babel/traverse';
 import * as parser from '@babel/parser';
 import { Node } from '@babel/types';
+import generate from '@babel/generator';
 
 import { HelperLikeFunction, ReplacementObject } from '../types/engine';
 import print from '../utils/print'
@@ -10,8 +11,6 @@ function Engine(): HelperLikeFunction {
         compareAst,
         schemeExpressionToAst
     }
-
-    const traverse = _traverse();
 
     function compareAst(scheme: Node, target: Node): boolean {
         let isMatch = true;
@@ -36,7 +35,8 @@ function Engine(): HelperLikeFunction {
     }
 
     function _removeVariables(exprAst: Node, variables: string[]) {
-        const exprCopy = JSON.parse(JSON.stringify(exprAst))
+        const exprCopy = JSON.parse(JSON.stringify(exprAst));
+        const variableNodes: Node[] = []
 
         for (const key of Object.keys(exprCopy)) {
             if (typeof exprCopy[key] === 'object') {
@@ -44,13 +44,19 @@ function Engine(): HelperLikeFunction {
 
                 for (const subKey of Object.keys(exprCopy[key])) {
                     if (variables.indexOf(exprCopy[key][subKey]) > -1) {
+                        variableNodes.push(JSON.parse(JSON.stringify(exprCopy[key])))
                         delete exprCopy[key];
                         deleted = true;
                     }
                 }
 
                 if (!deleted) {
-                    exprCopy[key] = _removeVariables(exprCopy[key], variables);
+                    const {
+                        newVariableNodes,
+                        newNodeCopy
+                    } = _removeVariables(exprCopy[key], variables);
+                    exprCopy[key] = newNodeCopy;
+                    variableNodes.push(...newVariableNodes)
                 }
             }
 
@@ -61,22 +67,27 @@ function Engine(): HelperLikeFunction {
             }
         }
 
-        return exprCopy;
+        return {
+            newVariableNodes: variableNodes,
+            newNodeCopy: exprCopy
+        };
     }
 
-    function schemeExpressionToAst(schemeExpr: string): Node | false {
+    function schemeExpressionToAst(schemeExpr: string): {cleanNode: Node, varNodes: Node[]} | false {
         let i = 0;
         const variables: string[] = [];
+        const varRegex = new RegExp(/\*[0-9]+/); // *0, *2, *67
 
-        while (schemeExpr.indexOf('*') > -1) {
-            const variable = `var${i}`;
-            i++;
-
-            if (schemeExpr.indexOf(variable) === -1) {
-                schemeExpr = schemeExpr.replace('*', variable);
-
-                variables.push(variable);
+        while (schemeExpr.search(varRegex) > -1) {
+            const variable = `var${schemeExpr.match(varRegex)[0].slice(1)}`;
+            
+            if (schemeExpr.indexOf(variable) > -1) {
+                throw new Error(`Please pick other number for *${variable.slice(3)} so it doesn't have the 
+                same number as the ${variable} used inside your expression`)
             }
+            schemeExpr = schemeExpr.replace(varRegex, variable);
+
+            variables.push(variable);
         }
 
         try {
@@ -85,12 +96,24 @@ function Engine(): HelperLikeFunction {
                 sourceType: 'unambiguous'
             })
 
-            return _removeVariables(exprAst, variables);
+            const {
+                newVariableNodes: variableNodes,
+                newNodeCopy: nodeCopy
+            } = _removeVariables(exprAst, variables);
+
+            return {
+                cleanNode: nodeCopy,
+                varNodes: variableNodes
+            };
         } catch (e) {
             print(`An error occured while parsing input scheme expression, error message: \n${e.message}`)
 
             return false;
         }
+    }
+
+    function generateNewExprCode(ast: Node): string {
+
     }
 
     function replaceMatchingExpressions(script: string, schemeAst: Node): string {
@@ -112,7 +135,20 @@ function Engine(): HelperLikeFunction {
                 })
 
                 const isMatch = compareAst(schemeAst, targetAst); //TODO: przetestowanie czy to działa i ma sens
+
+                if (isMatch) {
+                    replacements.push({
+                        start,
+                        end,
+                        code: generateNewExprCode(targetAst)
+                    })
+                }
             }
+
+            const traverse = _traverse();
+
+            traverse(scriptAst, traverseOpts);
+
         } catch (e) {
             print(`An error occured while parsing input file, error message: \n${e.message}`)
         }
