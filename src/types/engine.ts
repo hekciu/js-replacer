@@ -9,6 +9,6 @@ export type ReplacementObject = {
 }
 
 export type VariableNodeObject = {
-    node: Node;
-    key: string;
+    value: string;
+    key: string | Node;
 }

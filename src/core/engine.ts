@@ -3,33 +3,40 @@ import * as parser from '@babel/parser';
 import { Node } from '@babel/types';
 import generate from '@babel/generator';
 
-import { HelperLikeFunction, ReplacementObject, VariableNodeObject } from '../types/engine';
+import { HelperLikeFunction,
+    ReplacementObject,
+    VariableNodeObject } from '../types/engine';
 import print from '../utils/print';
 import { IGNORED_PROPERTIES } from './constants';
 
 function Engine(): HelperLikeFunction {
     return {
-        compareAst,
         schemeExpressionToAst,
         replaceMatchingExpressions
     }
 
-    function compareAst(scheme: Node, target: Node): boolean {
+    let _currentVariables: Array<string> = [];
+
+    function compareAst(firstPriority: Node,
+        secondPriority: Node,
+        keysToIgnore: Array<string>,
+        valuesToIgnore: Array<string>): boolean {
+
         let isMatch = true;
 
-        if (!target) {
+        if (!secondPriority) {
             return false;
         }
 
-        for (const key of Object.keys(scheme)) {
-            if (IGNORED_PROPERTIES.indexOf(key) > -1) {
+        for (const key of Object.keys(firstPriority)) {
+            if (keysToIgnore.indexOf(key) > -1 || valuesToIgnore.indexOf(secondPriority[key]) > -1) {
                 continue;
             }
 
-            if (typeof scheme[key] === 'object') {
-                isMatch = compareAst(scheme[key], target[key]);              
+            if (typeof firstPriority[key] === 'object') {
+                isMatch = compareAst(firstPriority[key], secondPriority[key], keysToIgnore, valuesToIgnore);              
             } else {
-                isMatch = scheme[key] === target[key];
+                isMatch = firstPriority[key] === secondPriority[key];
             }
 
             if (!isMatch) {
@@ -40,49 +47,7 @@ function Engine(): HelperLikeFunction {
         return isMatch;
     }
 
-    function _removeVariables(exprAst: Node, variables: string[]) {
-        const exprCopy = JSON.parse(JSON.stringify(exprAst));
-        const variableNodes: VariableNodeObject[] = [];
-
-        for (const key of Object.keys(exprCopy)) {
-            if (typeof exprCopy[key] === 'object' && exprCopy[key]) {
-                let deleted: boolean = false;
-
-                for (const subKey of Object.keys(exprCopy[key])) {
-                    if (variables.indexOf(exprCopy[key][subKey]) > -1) {
-                        variableNodes.push({
-                            node: JSON.parse(JSON.stringify(exprCopy[key])),
-                            key: key
-                        })
-                        delete exprCopy[key];
-                        deleted = true;
-                    }
-                }
-
-                if (!deleted) {
-                    const {
-                        newVariableNodes,
-                        newNodeCopy
-                    } = _removeVariables(exprCopy[key], variables);
-                    exprCopy[key] = newNodeCopy;
-                    variableNodes.push(...newVariableNodes)
-                }
-            }
-
-            if (Array.isArray(exprCopy[key])) {
-                exprCopy[key] = exprCopy[key].filter((el: Node | undefined) => {
-                    return typeof el !== 'undefined';
-                })
-            }
-        }
-
-        return {
-            newVariableNodes: variableNodes,
-            newNodeCopy: exprCopy
-        };
-    }
-
-    function schemeExpressionToAst(schemeExpr: string): {cleanNode: Node, nodeWithVars: Node, varNodes: VariableNodeObject[]} | false {
+    function schemeExpressionToAst(schemeExpr: string): Node | false {
         const variables: string[] = [];
         const varRegex = new RegExp(/\*[0-9]+/); // *0, *2, *67
 
@@ -98,22 +63,16 @@ function Engine(): HelperLikeFunction {
             variables.push(variable);
         }
 
+        _currentVariables = variables;
+
         try {
             const exprAst = parser.parseExpression(schemeExpr, {
                 allowImportExportEverywhere: true,
                 sourceType: 'unambiguous'
             })
 
-            const {
-                newVariableNodes: variableNodes,
-                newNodeCopy: nodeCopy
-            } = _removeVariables(exprAst, variables);
+            return exprAst;
 
-            return {
-                cleanNode: nodeCopy,
-                nodeWithVars: exprAst,
-                varNodes: variableNodes
-            };
         } catch (e) {
             print(`An error occured while parsing input scheme expression, error message: \n${e.message}`)
 
@@ -121,40 +80,19 @@ function Engine(): HelperLikeFunction {
         }
     }
 
-    function _hasCertainValue(node: Node, value: string): boolean {
-        for (const key of Object.keys(node)) {
-            if (node[key] === value) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    function _replaceWithCertainValue(ast: Node, value: string, replacement: Node) {
+    function _replaceVariables(ast: Node, variableName: string, value: string | Node): Node {
         const astCopy = JSON.parse(JSON.stringify(ast));
 
-        if (_hasCertainValue(astCopy, value)) {
-            return replacement;
-        }
-
-        for (const key of Object.keys(astCopy)) {
-            if (typeof astCopy[key] !== 'object' || astCopy[key] === null) {
-                continue;
-            }
-
-            if (_hasCertainValue(astCopy[key], value)) {
-                astCopy[key] = JSON.parse(JSON.stringify(replacement));
-            } else {
-                astCopy[key] = JSON.parse(JSON.stringify(_replaceWithCertainValue(astCopy[key], value, replacement)));
+        for (const key of Object.keys(ast)) {
+            if (typeof astCopy[key] === 'object') {
+                astCopy[key] = _replaceVariables(astCopy[key], variableName, value);              
+            } else if (astCopy[key] === variableName){
+                astCopy[key] = value;
             }
         }
 
-        return astCopy;
+        return astCopy
     }
-
-    // TODO: wyciaganie zmiennych z aktualnie przetwarzanego faktycznego node'a w skrypcie,
-    // aktualnie to dziala jakos chujowo inaczej
 
     function _generateNewExprCode(targetAst: Node, varNodeObjs: VariableNodeObject[]): string | false {
         const targetAstCopy = JSON.parse(JSON.stringify((targetAst)));
@@ -164,7 +102,7 @@ function Engine(): HelperLikeFunction {
             let replacedAst = targetAstCopy;
 
             for (const varNodeObj of varNodeObjsCopy) {
-               replacedAst = _replaceWithCertainValue(targetAstCopy, varNodeObj.key, varNodeObj.node);
+               replacedAst = _replaceVariables(targetAstCopy, varNodeObj.key, varNodeObj.value);
             }
 
             const codeObj = generate(replacedAst);
@@ -176,15 +114,24 @@ function Engine(): HelperLikeFunction {
         }
     }
 
-    function _extractVariables(variableArray: Node[], schemeAst: Node, targetAst: Node):void {
-        for (const key of Object.keys(targetAst)) {
-            //dodaj wyciaganie tych rzeczy ktore sa w scheme jako VARIABLES, nie sa w IGNORED, chyba moga byc null
-            // to nie moze byc czysty node tylko node ze zmiennymi i te rzeczy ktore beda mialy zmienne 
-            // w _hasCertainValue to znaczy (chyba) ze to jest wlasnie ta zmienna i trzeba to zamienic w targecie / outpucie
+    function _extractVariables(schemeAst: Node, elementAst: Node): Array<VariableNodeObject> {
+        const variableReplacements: Array<VariableNodeObject> = [];
+
+        for (const key of Object.keys(schemeAst)) {
+            if (typeof schemeAst[key] === 'object') {
+                variableReplacements.push(..._extractVariables(schemeAst[key], elementAst[key]));              
+            } else if (_currentVariables.indexOf(schemeAst[key]) > -1) {
+                variableReplacements.push({
+                    key: schemeAst[key],
+                    value: elementAst[key] // idk???? TODO TODO TODO
+                });
+            }
         }
+
+        return variableReplacements;
     }
 
-    function replaceMatchingExpressions(script: string, schemeAst: Node, targetAst: Node, varNodeObjs: VariableNodeObject[]): string {
+    function replaceMatchingExpressions(script: string, schemeAst: Node, targetAst: Node): string {
         let output = script;
         const replacements: ReplacementObject[] = [];
 
@@ -202,9 +149,11 @@ function Engine(): HelperLikeFunction {
                     sourceType: 'unambiguous'
                 })
 
-                const isMatch = compareAst(schemeAst, elementAst);
+                const isMatch = compareAst(elementAst, schemeAst, IGNORED_PROPERTIES, _currentVariables);
 
                 if (isMatch) {
+                    const varNodeObjs : VariableNodeObject[] = _extractVariables(schemeAst, elementAst);
+    
                     replacements.push({
                         start,
                         end,
@@ -215,8 +164,12 @@ function Engine(): HelperLikeFunction {
 
             traverse(scriptAst, traverseOpts);
 
+            let currentCharacterDiff = 0;
+
             replacements.forEach((replacementObj) => {
-                output = `${output.slice(0, replacementObj.start)}${replacementObj.code}${output.slice(replacementObj.end)}`;
+                const charactersBefore = output.length;
+                output = `${output.slice(0, replacementObj.start + currentCharacterDiff)}${replacementObj.code}${output.slice(replacementObj.end + currentCharacterDiff)}`;
+                currentCharacterDiff = currentCharacterDiff + (output.length - charactersBefore);
             })
         } catch (e) {
             print(`An error occured while parsing input file, error message: \n${e.message}`)

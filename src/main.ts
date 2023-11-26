@@ -8,23 +8,26 @@ const simpleObject = {
 for (const key of Object.keys(simpleObject)) {
     console.log(key);
 }
+
+for (const chuj of dupa) {
+    console.log(Object);
+    console.log(Object.keys([]))
+}
+
+Object.keys(simpleObject)
+
+for (const chuj of dupa) {
+    Object.keys(function() {
+        chuj()
+    })
+}
+
+Object.keys(ciasteczko)
+Object.keys(rumianek)
 `
 
-const {
-    cleanNode: schemeAst,
-    nodeWithVars,
-    varNodes: varNodeObjs
-} = engine.schemeExpressionToAst('Object.keys(*1)')
+const scheme = engine.schemeExpressionToAst('Object.keys(*1)')
 
-const {
-    cleanNode: targetAst,
-    nodeWithVars: targetNodeWithVars,
-    varNodes: targetVarNodes
-} = engine.schemeExpressionToAst('Obiekt.klucze(*1)')
+const target = engine.schemeExpressionToAst('Obiekt.klucze(*1)')
 
-console.log('input 1 ', file)
-console.log('input 2 ', schemeAst)
-console.log('input 3 ', targetAst)
-console.log('input 4 ', varNodeObjs)
-
-console.log(engine.replaceMatchingExpressions(file, schemeAst, targetAst, varNodeObjs))
+console.log(engine.replaceMatchingExpressions(file, scheme, target))
