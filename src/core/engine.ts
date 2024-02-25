@@ -7,20 +7,20 @@ import { HelperLikeFunction,
     ReplacementObject,
     VariableNodeObject } from '../types/engine';
 import print from '../utils/print';
+import deepClone from '../utils/deepClone'
 import { IGNORED_PROPERTIES } from './constants';
+
+let _currentVariables: Array<string> = [];
 
 function Engine(): HelperLikeFunction {
     return {
         schemeExpressionToAst,
-        replaceMatchingExpressions
+        replaceMatchingExpressions,
+        compareAst
     }
 
-    let _currentVariables: Array<string> = [];
-
     function compareAst(firstPriority: Node,
-        secondPriority: Node,
-        keysToIgnore: Array<string>,
-        valuesToIgnore: Array<string>): boolean {
+        secondPriority: Node): boolean {
 
         let isMatch = true;
 
@@ -29,12 +29,27 @@ function Engine(): HelperLikeFunction {
         }
 
         for (const key of Object.keys(firstPriority)) {
-            if (keysToIgnore.indexOf(key) > -1 || valuesToIgnore.indexOf(secondPriority[key]) > -1) {
+            if (IGNORED_PROPERTIES.includes(key)) {
                 continue;
             }
 
+            if (typeof secondPriority[key] === 'object') {
+                let shouldContinue = false;
+                for (const value of Object.values(secondPriority[key])) {
+                    shouldContinue = typeof value === 'string' && _currentVariables.includes(value);
+
+                    if (shouldContinue) {
+                        continue;
+                    }
+                }
+
+                if (shouldContinue) {
+                    continue;
+                }
+            }
+
             if (typeof firstPriority[key] === 'object') {
-                isMatch = compareAst(firstPriority[key], secondPriority[key], keysToIgnore, valuesToIgnore);              
+                isMatch = compareAst(firstPriority[key], secondPriority[key]);              
             } else {
                 isMatch = firstPriority[key] === secondPriority[key];
             }
@@ -47,23 +62,25 @@ function Engine(): HelperLikeFunction {
         return isMatch;
     }
 
-    function schemeExpressionToAst(schemeExpr: string): Node | false {
+    function schemeExpressionToAst(schemeExpr: string, updateVariables: boolean = true): Node | false {
         const variables: string[] = [];
         const varRegex = new RegExp(/\*[0-9]+/); // *0, *2, *67
 
         while (schemeExpr.search(varRegex) > -1) {
-            const variable = `var${schemeExpr.match(varRegex)[0].slice(1)}`;
+            const variable = `js_replacer__tmp_variable__${schemeExpr.match(varRegex)[0].slice(1)}`;
 
-            if (schemeExpr.indexOf(variable) > -1) {
-                throw new Error(`Please pick other number for *${variable.slice(3)} so it doesn't have the 
-                same number as the ${variable} used inside your expression`)
+            if (schemeExpr.includes(variable)) {
+                throw new Error(`Please pick other number for *${variable.split('__').pop()} so it\
+                doesn't have the same number as the ${variable} used inside your expression`)
             }
             schemeExpr = schemeExpr.replace(varRegex, variable);
 
             variables.push(variable);
         }
 
-        _currentVariables = variables;
+        if (updateVariables) {
+            _currentVariables = variables;
+        }
 
         try {
             const exprAst = parser.parseExpression(schemeExpr, {
@@ -80,14 +97,18 @@ function Engine(): HelperLikeFunction {
         }
     }
 
-    function _replaceVariables(ast: Node, variableName: string, value: string | Node): Node {
-        const astCopy = JSON.parse(JSON.stringify(ast));
+    function _replaceVariables(ast: Node, variableName: string, value: Node): Node {
+        const astCopy = deepClone(ast) as Node;
 
         for (const key of Object.keys(ast)) {
+            if (IGNORED_PROPERTIES.includes(key)) {
+                continue;
+            }
+
             if (typeof astCopy[key] === 'object') {
                 astCopy[key] = _replaceVariables(astCopy[key], variableName, value);              
-            } else if (astCopy[key] === variableName){
-                astCopy[key] = value;
+            } else if (astCopy[key] === variableName) {
+                return value;
             }
         }
 
@@ -95,19 +116,17 @@ function Engine(): HelperLikeFunction {
     }
 
     function _generateNewExprCode(targetAst: Node, varNodeObjs: VariableNodeObject[]): string | false {
-        const targetAstCopy = JSON.parse(JSON.stringify((targetAst)));
-        const varNodeObjsCopy = JSON.parse(JSON.stringify(varNodeObjs));
+        let replacedAst = deepClone(targetAst) as Node;
+        const varNodeObjsCopy = deepClone(varNodeObjs) as VariableNodeObject[];
 
         try {
-            let replacedAst = targetAstCopy;
-
             for (const varNodeObj of varNodeObjsCopy) {
-               replacedAst = _replaceVariables(targetAstCopy, varNodeObj.key, varNodeObj.value);
+                replacedAst = _replaceVariables(replacedAst, varNodeObj.key, varNodeObj.value);
             }
 
-            const codeObj = generate(replacedAst);
+            const { code } = generate(replacedAst);
 
-            return codeObj.code;
+            return code;
         } catch(e) {
             print(`An error occured while generating new expression code, error message: \n${e.message}`);
             return false;
@@ -115,15 +134,19 @@ function Engine(): HelperLikeFunction {
     }
 
     function _extractVariables(schemeAst: Node, elementAst: Node): Array<VariableNodeObject> {
-        const variableReplacements: Array<VariableNodeObject> = [];
+        let variableReplacements: Array<VariableNodeObject> = [];
 
         for (const key of Object.keys(schemeAst)) {
+            if (IGNORED_PROPERTIES.includes(key)) {
+                continue;
+            }
+
             if (typeof schemeAst[key] === 'object') {
                 variableReplacements.push(..._extractVariables(schemeAst[key], elementAst[key]));              
             } else if (_currentVariables.indexOf(schemeAst[key]) > -1) {
                 variableReplacements.push({
                     key: schemeAst[key],
-                    value: elementAst[key] // idk???? TODO TODO TODO
+                    value: elementAst// idk???? TODO TODO TODO
                 });
             }
         }
@@ -135,45 +158,61 @@ function Engine(): HelperLikeFunction {
         let output = script;
         const replacements: ReplacementObject[] = [];
 
-        try {
-            const scriptAst = parser.parse(script);
+        const scriptAst = parser.parse(script);
 
-            const traverseOpts = {};
-            traverseOpts[schemeAst.type] = function ({ node }: { node: Node }) {
-                const start = node.start;
-                const end = node.end;
+        // workaround for duplicates
+        const usedPositions: { start: number, end: number }[] = [];
 
-                const substr = script.slice(start, end);
-                const elementAst = parser.parseExpression(substr, {
+        const enter = function ({ node }: { node: Node }) {
+            const start = node.start;
+            const end = node.end;
+
+            for (const usedPosition of usedPositions) {
+                if (start === usedPosition.start && end === usedPosition.end) {
+                    return;
+                }
+            }
+
+            const expressionSubstr = script.slice(start, end);
+
+            try {
+                const elementAst = parser.parseExpression(expressionSubstr, {
                     allowImportExportEverywhere: true,
                     sourceType: 'unambiguous'
                 })
 
-                const isMatch = compareAst(elementAst, schemeAst, IGNORED_PROPERTIES, _currentVariables);
+                const isMatch = compareAst(elementAst, schemeAst);
 
                 if (isMatch) {
-                    const varNodeObjs : VariableNodeObject[] = _extractVariables(schemeAst, elementAst);
-    
+                    const varNodeObjs: VariableNodeObject[] = _extractVariables(schemeAst, elementAst);
+
                     replacements.push({
                         start,
                         end,
-                        code: _generateNewExprCode(targetAst, varNodeObjs) || substr
+                        code: _generateNewExprCode(targetAst, varNodeObjs) || expressionSubstr
+                    })
+
+                    usedPositions.push({
+                        start,
+                        end
                     })
                 }
+            } catch (e) {
+                print(`Could not parse expression with type ${node.type}`)
             }
-
-            traverse(scriptAst, traverseOpts);
-
-            let currentCharacterDiff = 0;
-
-            replacements.forEach((replacementObj) => {
-                const charactersBefore = output.length;
-                output = `${output.slice(0, replacementObj.start + currentCharacterDiff)}${replacementObj.code}${output.slice(replacementObj.end + currentCharacterDiff)}`;
-                currentCharacterDiff = currentCharacterDiff + (output.length - charactersBefore);
-            })
-        } catch (e) {
-            print(`An error occured while parsing input file, error message: \n${e.message}`)
         }
+
+        traverse(scriptAst, {
+            enter: enter
+        });
+
+        let currentCharacterDiff = 0;
+
+        replacements.forEach((replacementObj) => {
+            const charactersBefore = output.length;
+            output = `${output.slice(0, replacementObj.start + currentCharacterDiff)}${replacementObj.code}${output.slice(replacementObj.end + currentCharacterDiff)}`;
+            currentCharacterDiff = currentCharacterDiff + (output.length - charactersBefore);
+        })
 
         return output;
     }

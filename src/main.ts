@@ -23,11 +23,24 @@ for (const chuj of dupa) {
 }
 
 Object.keys(ciasteczko)
-Object.keys(rumianek)
+Object.keys(rumianek, cosTam)
 `
 
 const scheme = engine.schemeExpressionToAst('Object.keys(*1)')
 
-const target = engine.schemeExpressionToAst('Obiekt.klucze(*1)')
+const target = engine.schemeExpressionToAst('Obiekt.klucze(*1)', false)
 
 console.log(engine.replaceMatchingExpressions(file, scheme, target))
+
+// console.log(engine.compareAst({
+//     test: {
+//         chuj: 'chuj',
+//         dupa: 'dupa',
+//         chuj2: 'var1'
+//     }
+// }, {
+//     test: {
+//         chuj: 'chuj',
+//         dupa: 'dupa'
+//     } //ignore all variables
+// }))

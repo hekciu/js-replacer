@@ -1,3 +1,5 @@
+import { Node } from '@babel/types';
+
 export type HelperLikeFunction = {
     [type: string]: Function
 }
@@ -9,6 +11,6 @@ export type ReplacementObject = {
 }
 
 export type VariableNodeObject = {
-    value: string;
-    key: string | Node;
+    value: Node;
+    key: string;
 }
