@@ -24,11 +24,15 @@ for (const chuj of dupa) {
 
 Object.keys(ciasteczko)
 Object.keys(rumianek, cosTam)
+Object.keys(something, new Array())
+Object.keys(chuj, function () {}, () => {
+
+})
 `
 
-const scheme = engine.schemeExpressionToAst('Object.keys(*1)')
+const scheme = engine.schemeExpressionToAst('Object.keys(*1, *2)')
 
-const target = engine.schemeExpressionToAst('Obiekt.klucze(*1)', false)
+const target = engine.schemeExpressionToAst('Obiekt.klucze(*1, *2)', false) //known bug
 
 console.log(engine.replaceMatchingExpressions(file, scheme, target))
 

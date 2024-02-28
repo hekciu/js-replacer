@@ -27,6 +27,7 @@
   },
   "dependencies": {
     "@babel/generator": "^7.23.0",
-    "@babel/traverse": "^7.23.2"
+    "@babel/traverse": "^7.23.2",
+    "putout": "^35.5.1"
   }
 }

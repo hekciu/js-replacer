@@ -2,6 +2,7 @@ import traverse from '@babel/traverse';
 import * as parser from '@babel/parser';
 import { Node } from '@babel/types';
 import generate from '@babel/generator';
+import { compare } from '@putout/compare';
 
 import { HelperLikeFunction,
     ReplacementObject,
@@ -17,6 +18,10 @@ function Engine(): HelperLikeFunction {
         schemeExpressionToAst,
         replaceMatchingExpressions,
         compareAst
+    }
+
+    function compareBoth(first: Node, second: Node) {
+        return compareAst(first, second) && compareAst(second, first)
     }
 
     function compareAst(firstPriority: Node,
@@ -154,6 +159,27 @@ function Engine(): HelperLikeFunction {
         return variableReplacements;
     }
 
+    function removeVariables(node: Node) {
+        const nodeCopy = deepClone(node) as Node;
+
+        for (const key of Object.keys(nodeCopy)) {
+            if (typeof nodeCopy[key] === 'object') {
+                for (const value of Object.values(nodeCopy[key])) {
+                    if (_currentVariables.includes(value as string)) {
+                        delete nodeCopy[key];
+                        break;
+                    }
+                }
+
+                if (nodeCopy[key]) {
+                    nodeCopy[key] = removeVariables(nodeCopy[key]);
+                }
+            }
+        }
+
+        return nodeCopy
+    }
+
     function replaceMatchingExpressions(script: string, schemeAst: Node, targetAst: Node): string {
         let output = script;
         const replacements: ReplacementObject[] = [];
@@ -181,7 +207,7 @@ function Engine(): HelperLikeFunction {
                     sourceType: 'unambiguous'
                 })
 
-                const isMatch = compareAst(elementAst, schemeAst);
+                const isMatch = compare(removeVariables(elementAst), removeVariables(schemeAst));
 
                 if (isMatch) {
                     const varNodeObjs: VariableNodeObject[] = _extractVariables(schemeAst, elementAst);
