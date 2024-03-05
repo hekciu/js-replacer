@@ -9,6 +9,7 @@ import { HelperLikeFunction,
     VariableNodeObject } from '../types/engine';
 import print from '../utils/print';
 import deepClone from '../utils/deepClone'
+import isObject from '../utils/isObject';
 import { IGNORED_PROPERTIES } from './constants';
 
 let _currentVariables: Array<string> = [];
@@ -110,7 +111,7 @@ function Engine(): HelperLikeFunction {
                 continue;
             }
 
-            if (typeof astCopy[key] === 'object') {
+            if (isObject(astCopy[key])) {
                 astCopy[key] = _replaceVariables(astCopy[key], variableName, value);              
             } else if (astCopy[key] === variableName) {
                 return value;
@@ -163,7 +164,7 @@ function Engine(): HelperLikeFunction {
         const nodeCopy = deepClone(node) as Node;
 
         for (const key of Object.keys(nodeCopy)) {
-            if (typeof nodeCopy[key] === 'object') {
+            if (isObject(nodeCopy[key])) {
                 for (const value of Object.values(nodeCopy[key])) {
                     if (_currentVariables.includes(value as string)) {
                         delete nodeCopy[key];
@@ -202,10 +203,8 @@ function Engine(): HelperLikeFunction {
             const expressionSubstr = script.slice(start, end);
 
             try {
-                const elementAst = parser.parseExpression(expressionSubstr, {
-                    allowImportExportEverywhere: true,
-                    sourceType: 'unambiguous'
-                })
+                console.log('attempting to parse ', expressionSubstr)
+                const elementAst = parser.parseExpression(expressionSubstr)
 
                 const isMatch = compare(removeVariables(elementAst), removeVariables(schemeAst));
 
@@ -224,7 +223,7 @@ function Engine(): HelperLikeFunction {
                     })
                 }
             } catch (e) {
-                print(`Could not parse expression with type ${node.type}`)
+                print(`Could not parse expression with type ${node.type}, details: ${e.message}`)
             }
         }
 

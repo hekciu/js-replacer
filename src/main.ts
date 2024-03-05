@@ -26,8 +26,12 @@ Object.keys(ciasteczko)
 Object.keys(rumianek, cosTam)
 Object.keys(something, new Array())
 Object.keys(chuj, function () {}, () => {
+  console.log('chuj')
 
+  Object.keys(chuj, dupa)
 })
+
+Object.keys(function(){}, chuj)
 `
 
 const scheme = engine.schemeExpressionToAst('Object.keys(*1, *2)')
