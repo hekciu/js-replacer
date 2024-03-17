@@ -4,8 +4,7 @@ import { Node } from '@babel/types';
 import generate from '@babel/generator';
 import { compare } from '@putout/compare';
 
-import { HelperLikeFunction,
-    ReplacementObject,
+import { ReplacementObject,
     VariableNodeObject } from '../types/engine';
 import print from '../utils/print';
 import deepClone from '../utils/deepClone'
@@ -14,18 +13,8 @@ import { IGNORED_PROPERTIES } from './constants';
 
 let _currentVariables: Array<string> = [];
 
-function Engine(): HelperLikeFunction {
-    return {
-        schemeExpressionToAst,
-        replaceMatchingExpressions,
-        compareAst
-    }
-
-    function compareBoth(first: Node, second: Node) {
-        return compareAst(first, second) && compareAst(second, first)
-    }
-
-    function compareAst(firstPriority: Node,
+class Engine {
+    static compareAst(firstPriority: Node,
         secondPriority: Node): boolean {
 
         let isMatch = true;
@@ -55,7 +44,7 @@ function Engine(): HelperLikeFunction {
             }
 
             if (typeof firstPriority[key] === 'object') {
-                isMatch = compareAst(firstPriority[key], secondPriority[key]);              
+                isMatch = this.compareAst(firstPriority[key], secondPriority[key]);              
             } else {
                 isMatch = firstPriority[key] === secondPriority[key];
             }
@@ -68,7 +57,7 @@ function Engine(): HelperLikeFunction {
         return isMatch;
     }
 
-    function schemeExpressionToAst(schemeExpr: string, updateVariables: boolean = true): Node | false {
+    static schemeExpressionToAst(schemeExpr: string, updateVariables: boolean = true): Node {
         const variables: string[] = [];
         const varRegex = new RegExp(/\*[0-9]+/); // *0, *2, *67
 
@@ -97,13 +86,11 @@ function Engine(): HelperLikeFunction {
             return exprAst;
 
         } catch (e) {
-            print(`An error occured while parsing input scheme expression, error message: \n${e.message}`)
-
-            return false;
+            throw new Error(`An error occured while parsing input scheme expression, error message: \n${e.message}`)
         }
     }
 
-    function _replaceVariables(ast: Node, variableName: string, value: Node): Node {
+    static _replaceVariables(ast: Node, variableName: string, value: Node): Node {
         const astCopy = deepClone(ast) as Node;
 
         for (const key of Object.keys(ast)) {
@@ -112,7 +99,7 @@ function Engine(): HelperLikeFunction {
             }
 
             if (isObject(astCopy[key])) {
-                astCopy[key] = _replaceVariables(astCopy[key], variableName, value);              
+                astCopy[key] = this._replaceVariables(astCopy[key], variableName, value);              
             } else if (astCopy[key] === variableName) {
                 return value;
             }
@@ -121,13 +108,13 @@ function Engine(): HelperLikeFunction {
         return astCopy
     }
 
-    function _generateNewExprCode(targetAst: Node, varNodeObjs: VariableNodeObject[]): string | false {
+    static _generateNewExprCode(targetAst: Node, varNodeObjs: VariableNodeObject[]): string | false {
         let replacedAst = deepClone(targetAst) as Node;
         const varNodeObjsCopy = deepClone(varNodeObjs) as VariableNodeObject[];
 
         try {
             for (const varNodeObj of varNodeObjsCopy) {
-                replacedAst = _replaceVariables(replacedAst, varNodeObj.key, varNodeObj.value);
+                replacedAst = this._replaceVariables(replacedAst, varNodeObj.key, varNodeObj.value);
             }
 
             const { code } = generate(replacedAst);
@@ -139,7 +126,7 @@ function Engine(): HelperLikeFunction {
         }
     }
 
-    function _extractVariables(schemeAst: Node, elementAst: Node): Array<VariableNodeObject> {
+    static _extractVariables(schemeAst: Node, elementAst: Node): Array<VariableNodeObject> {
         let variableReplacements: Array<VariableNodeObject> = [];
 
         for (const key of Object.keys(schemeAst)) {
@@ -148,11 +135,11 @@ function Engine(): HelperLikeFunction {
             }
 
             if (typeof schemeAst[key] === 'object') {
-                variableReplacements.push(..._extractVariables(schemeAst[key], elementAst[key]));              
+                variableReplacements.push(...this._extractVariables(schemeAst[key], elementAst[key]));              
             } else if (_currentVariables.indexOf(schemeAst[key]) > -1) {
                 variableReplacements.push({
                     key: schemeAst[key],
-                    value: elementAst// idk???? TODO TODO TODO
+                    value: elementAst
                 });
             }
         }
@@ -160,7 +147,7 @@ function Engine(): HelperLikeFunction {
         return variableReplacements;
     }
 
-    function removeVariables(node: Node) {
+    static removeVariables(node: Node) {
         const nodeCopy = deepClone(node) as Node;
 
         for (const key of Object.keys(nodeCopy)) {
@@ -173,7 +160,7 @@ function Engine(): HelperLikeFunction {
                 }
 
                 if (nodeCopy[key]) {
-                    nodeCopy[key] = removeVariables(nodeCopy[key]);
+                    nodeCopy[key] = this.removeVariables(nodeCopy[key]);
                 }
             }
         }
@@ -181,7 +168,7 @@ function Engine(): HelperLikeFunction {
         return nodeCopy
     }
 
-    function replaceMatchingExpressions(script: string, schemeAst: Node, targetAst: Node): string {
+    static replaceMatchingExpressions(script: string, schemeAst: Node, targetAst: Node): string {
         let output = script;
         const replacements: ReplacementObject[] = [];
 
@@ -206,15 +193,15 @@ function Engine(): HelperLikeFunction {
                 console.log('attempting to parse ', expressionSubstr)
                 const elementAst = parser.parseExpression(expressionSubstr)
 
-                const isMatch = compare(removeVariables(elementAst), removeVariables(schemeAst));
+                const isMatch = compare(this.removeVariables(elementAst), this.removeVariables(schemeAst));
 
                 if (isMatch) {
-                    const varNodeObjs: VariableNodeObject[] = _extractVariables(schemeAst, elementAst);
+                    const varNodeObjs: VariableNodeObject[] = this._extractVariables(schemeAst, elementAst);
 
                     replacements.push({
                         start,
                         end,
-                        code: _generateNewExprCode(targetAst, varNodeObjs) || expressionSubstr
+                        code: this._generateNewExprCode(targetAst, varNodeObjs) || expressionSubstr
                     })
 
                     usedPositions.push({
@@ -243,4 +230,4 @@ function Engine(): HelperLikeFunction {
     }
 }
 
-export default Engine();
+export default Engine;

@@ -1,4 +1,4 @@
-import engine from "./core/engine";
+import Engine from "./core/engine";
 
 const file = `
 const simpleObject = {
@@ -34,11 +34,11 @@ Object.keys(chuj, function () {}, () => {
 Object.keys(function(){}, chuj)
 `
 
-const scheme = engine.schemeExpressionToAst('Object.keys(*1, *2)')
+const scheme = Engine.schemeExpressionToAst('Object.keys(*1, *2)')
 
-const target = engine.schemeExpressionToAst('Obiekt.klucze(*1, *2)', false) //known bug
+const target = Engine.schemeExpressionToAst('Obiekt.klucze(*1, *2)', false) //known bug
 
-console.log(engine.replaceMatchingExpressions(file, scheme, target))
+console.log(Engine.replaceMatchingExpressions(file, scheme, target))
 
 // console.log(engine.compareAst({
 //     test: {
