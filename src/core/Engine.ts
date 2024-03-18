@@ -48,7 +48,7 @@ class Engine {
             }
 
             if (typeof firstPriority[key] === 'object') {
-                isMatch = this.compareAst(firstPriority[key], secondPriority[key]);              
+                isMatch = Engine.compareAst(firstPriority[key], secondPriority[key]);              
             } else {
                 isMatch = firstPriority[key] === secondPriority[key];
             }
@@ -103,7 +103,7 @@ class Engine {
             }
 
             if (isObject(astCopy[key])) {
-                astCopy[key] = this._replaceVariables(astCopy[key], variableName, value);              
+                astCopy[key] = Engine._replaceVariables(astCopy[key], variableName, value);              
             } else if (astCopy[key] === variableName) {
                 return value;
             }
@@ -118,7 +118,7 @@ class Engine {
 
         try {
             for (const varNodeObj of varNodeObjsCopy) {
-                replacedAst = this._replaceVariables(replacedAst, varNodeObj.key, varNodeObj.value);
+                replacedAst = Engine._replaceVariables(replacedAst, varNodeObj.key, varNodeObj.value);
             }
 
             const { code } = generate(replacedAst);
@@ -139,7 +139,7 @@ class Engine {
             }
 
             if (typeof schemeAst[key] === 'object') {
-                variableReplacements.push(...this._extractVariables(schemeAst[key], elementAst[key]));              
+                variableReplacements.push(...Engine._extractVariables(schemeAst[key], elementAst[key]));              
             } else if (_currentVariables.indexOf(schemeAst[key]) > -1) {
                 variableReplacements.push({
                     key: schemeAst[key],
@@ -164,7 +164,7 @@ class Engine {
                 }
 
                 if (nodeCopy[key]) {
-                    nodeCopy[key] = this.removeVariables(nodeCopy[key]);
+                    nodeCopy[key] = Engine.removeVariables(nodeCopy[key]);
                 }
             }
         }
@@ -197,15 +197,15 @@ class Engine {
                 console.log('attempting to parse ', expressionSubstr)
                 const elementAst = parser.parseExpression(expressionSubstr)
 
-                const isMatch = compare(this.removeVariables(elementAst), this.removeVariables(schemeAst));
+                const isMatch = compare(Engine.removeVariables(elementAst), Engine.removeVariables(schemeAst));
 
                 if (isMatch) {
-                    const varNodeObjs: VariableNodeObject[] = this._extractVariables(schemeAst, elementAst);
+                    const varNodeObjs: VariableNodeObject[] = Engine._extractVariables(schemeAst, elementAst);
 
                     replacements.push({
                         start,
                         end,
-                        code: this._generateNewExprCode(targetAst, varNodeObjs) || expressionSubstr
+                        code: Engine._generateNewExprCode(targetAst, varNodeObjs) || expressionSubstr
                     })
 
                     usedPositions.push({
