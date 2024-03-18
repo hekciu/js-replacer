@@ -5,7 +5,7 @@ import generate from '@babel/generator';
 import { compare } from '@putout/compare';
 
 import { ReplacementObject,
-    VariableNodeObject } from '../types/engine';
+    VariableNodeObject } from '../types/Engine';
 import print from '../utils/print';
 import deepClone from '../utils/deepClone'
 import isObject from '../utils/isObject';
@@ -14,6 +14,10 @@ import { IGNORED_PROPERTIES } from './constants';
 let _currentVariables: Array<string> = [];
 
 class Engine {
+    constructor() {
+        throw new Error('This class should not be instantiated, use static methods instead');
+    }
+
     static compareAst(firstPriority: Node,
         secondPriority: Node): boolean {
 
