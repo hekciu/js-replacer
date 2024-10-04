@@ -1,5 +1,4 @@
-import traverse from '@babel/traverse';
-import * as parser from '@babel/parser';
+import traverse from '@babel/traverse'; import * as parser from '@babel/parser';
 import { Node } from '@babel/types';
 import generate from '@babel/generator';
 import { compare } from '@putout/compare';
@@ -9,7 +8,7 @@ import { ReplacementObject,
 import print from '../utils/print';
 import deepClone from '../utils/deepClone'
 import isObject from '../utils/isObject';
-import { IGNORED_PROPERTIES } from './constants';
+import { IGNORED_PROPERTIES, NODE_TYPES_TO_OMIT_REPLACEMENT } from './constants';
 
 let _currentVariables: Array<string> = [];
 
@@ -123,6 +122,8 @@ class Engine {
 
             const { code } = generate(replacedAst);
 
+            console.log(`newly generated code: ${code}`)
+
             return code;
         } catch(e) {
             print(`An error occured while generating new expression code, error message: \n${e.message}`);
@@ -138,7 +139,7 @@ class Engine {
                 continue;
             }
 
-            if (typeof schemeAst[key] === 'object') {
+            if (isObject(schemeAst[key])) {
                 variableReplacements.push(...Engine._extractVariables(schemeAst[key], elementAst[key]));              
             } else if (_currentVariables.indexOf(schemeAst[key]) > -1) {
                 variableReplacements.push({
@@ -178,23 +179,17 @@ class Engine {
 
         const scriptAst = parser.parse(script);
 
-        // workaround for duplicates
-        const usedPositions: { start: number, end: number }[] = [];
-
         const enter = function ({ node }: { node: Node }) {
             const start = node.start;
             const end = node.end;
 
-            for (const usedPosition of usedPositions) {
-                if (start === usedPosition.start && end === usedPosition.end) {
-                    return;
-                }
+            if (node.type && NODE_TYPES_TO_OMIT_REPLACEMENT.includes(node.type)) {
+                return;
             }
 
             const expressionSubstr = script.slice(start, end);
 
             try {
-                console.log('attempting to parse ', expressionSubstr)
                 const elementAst = parser.parseExpression(expressionSubstr)
 
                 const isMatch = compare(Engine.removeVariables(elementAst), Engine.removeVariables(schemeAst));
@@ -207,11 +202,6 @@ class Engine {
                         end,
                         code: Engine._generateNewExprCode(targetAst, varNodeObjs) || expressionSubstr
                     })
-
-                    usedPositions.push({
-                        start,
-                        end
-                    })
                 }
             } catch (e) {
                 print(`Could not parse expression with type ${node.type}, details: ${e.message}`)
@@ -222,12 +212,16 @@ class Engine {
             enter: enter
         });
 
-        let currentCharacterDiff = 0;
+        // this cannot be done like this, when an expression happens to be inside the other expression there is no way of knowing
+        // whether yuu should update index or not, but check this once again
+        replacements.forEach((replacementObj, i) => {
+            console.log(`replacing: ${JSON.stringify(replacementObj)}`);
+            console.log(`currentCharacterDiff: ${currentCharacterDiff}`)
 
-        replacements.forEach((replacementObj) => {
-            const charactersBefore = output.length;
-            output = `${output.slice(0, replacementObj.start + currentCharacterDiff)}${replacementObj.code}${output.slice(replacementObj.end + currentCharacterDiff)}`;
-            currentCharacterDiff = currentCharacterDiff + (output.length - charactersBefore);
+            const start = replacementObj.start + currentStartCharacterDiff;
+            const end = replacementObj.end + currentEndCharacterDiff;
+            output = `${output.slice(0, start)}${replacementObj.code}${output.slice(end)}`;
+            updateReplacementsCords(replacementObj, i + 1);
         })
 
         return output;

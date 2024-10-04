@@ -1,6 +1,6 @@
 {
   "name": "js-replacer",
-  "version": "1.0.0",
+  "version": "0.5.0",
   "description": "Replace certain parts of your code (e.g. deprecated external library function call with recently built it one) using one command",
   "main": "dist/main.js",
   "scripts": {
@@ -13,7 +13,7 @@
     "url": "git+https://github.com/hekciu/js-replacer.git"
   },
   "author": "hekciu",
-  "license": "MIT",
+  "license": "GPL",
   "bugs": {
     "url": "https://github.com/hekciu/js-replacer/issues"
   },

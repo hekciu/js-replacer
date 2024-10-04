@@ -1,0 +1,5 @@
+Object.keys(a, Object.keys(a, () => {
+    Object.keys(dupa) 
+    Object.keys(Object.keys(dupa, dupa), dupa)
+    Object.keys(dupa, dupa, Object.keys())
+}))
